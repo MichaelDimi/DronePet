@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 
-#include "BoardPins.h"
+#include "../board/BoardPins.h"
 #include "Imu.h"
 
 // TODO: Later update gyro bias only during confidently stationary periods.
@@ -10,6 +10,8 @@ namespace {
     SPIClass imuSPI(VSPI);
 
     constexpr uint32_t SPI_CLOCK_HZ = 1'000'000;
+    constexpr size_t SPI_IDENTITY_CHECK_INTERVAL_SAMPLES = 200;
+
     constexpr size_t   GYRO_CALIBRATION_SETTLING_SAMPLES = 100;
     constexpr size_t   GYRO_CALIBRATION_SAMPLES = 500;
     constexpr uint32_t GYRO_SAMPLE_INTERVAL_MS = 3;
@@ -32,14 +34,17 @@ namespace {
 
     Vector3 gyroBias;
 
+    size_t samplesSinceIdentityCheck = 0;
+    bool communicationHealthy = true;
+
     uint8_t readRegister(uint8_t address) {
         imuSPI.beginTransaction(imuSettings);
-        digitalWrite(IMU_CS, LOW); // Switch to SPI while communicating
+        digitalWrite(IMU_CS, LOW); // Select the IMU for this SPI transaction
 
         imuSPI.transfer(address | 0x80);  // Set the SPI read bit
         uint8_t value = imuSPI.transfer(0x00); // Send a dummy byte to generate 8 clock pulses while reading the IMU's reply on MISO
 
-        digitalWrite(IMU_CS, HIGH); // Swap back to I2C
+        digitalWrite(IMU_CS, HIGH); // Select the IMU for this SPI transaction
         imuSPI.endTransaction();
 
         return value;
@@ -47,27 +52,45 @@ namespace {
 
     void writeRegister(uint8_t address, uint8_t value) {
         imuSPI.beginTransaction(imuSettings);
-        digitalWrite(IMU_CS, LOW); // Switch to SPI while communicating
+        digitalWrite(IMU_CS, LOW); // Select the IMU for this SPI transaction
 
         imuSPI.transfer(address & 0x7F);  // Clear the SPI read bit for a write
         imuSPI.transfer(value);
 
-        digitalWrite(IMU_CS, HIGH); // Swap back to I2C
+        digitalWrite(IMU_CS, HIGH); // Deselect the IMU and end the SPI transaction
         imuSPI.endTransaction();
     }
 
-    void readRegisters(uint8_t startAddress, uint8_t* data, size_t length) {
+    bool readRegisters(
+        uint8_t startAddress,
+        uint8_t* data,
+        size_t length
+    ) {
         imuSPI.beginTransaction(imuSettings);
         digitalWrite(IMU_CS, LOW);
 
-        imuSPI.transfer(startAddress | 0x80);  // Begin a sequential register read
+        imuSPI.transfer(
+            startAddress | 0x80
+        );  // Begin a sequential register read
+
+        bool allBytesZero = true;
+        bool allBytesOne = true;
 
         for (size_t i = 0; i < length; i++) {
+            // SPI must transmit a dummy byte to generate the clock pulses that
+            // allow the IMU to shift the next response byte back through MISO.
             data[i] = imuSPI.transfer(0x00);
+
+            allBytesZero &= data[i] == 0x00;
+            allBytesOne &= data[i] == 0xFF;
         }
 
         digitalWrite(IMU_CS, HIGH);
         imuSPI.endTransaction();
+
+        // A disconnected or failed SPI bus commonly returns only zeros or ones.
+        // SPI has no acknowledgement bit, so this is a basic integrity heuristic.
+        return !allBytesZero && !allBytesOne;
     }
 
     int16_t combineBytes(uint8_t lowByte, uint8_t highByte) {
@@ -76,16 +99,13 @@ namespace {
         );
     }
 
-    void readUncalibratedSample(ImuSample& sample) {
-        // The IMU stores each axis as a signed 16-bit value:
-        // 2 bytes x 3 gyro axes + 2 bytes x 3 accelerometer axes = 12 bytes.
+    bool readUncalibratedSample(ImuSample& sample) {
         uint8_t data[12];
 
-        // Starting at 0x22, the gyro XYZ and accelerometer XYZ registers
-        // are contiguous, so one SPI burst reads the complete synchronized sample.
-        readRegisters(REG_GYRO_X_L, data, sizeof(data));
+        if (!readRegisters(REG_GYRO_X_L, data, sizeof(data))) {
+            return false;
+        }
 
-        // Each measurement is stored little-endian: low byte first, then high byte.
         int16_t gyroX = combineBytes(data[0], data[1]);
         int16_t gyroY = combineBytes(data[2], data[3]);
         int16_t gyroZ = combineBytes(data[4], data[5]);
@@ -94,23 +114,21 @@ namespace {
         int16_t accelY = combineBytes(data[8], data[9]);
         int16_t accelZ = combineBytes(data[10], data[11]);
 
-        // At the configured +/-500 dps range, each gyro count represents
-        // 17.5 millidegrees per second, or 0.0175 degrees per second.
         sample.gyroDps.x = gyroX * 0.0175f;
         sample.gyroDps.y = gyroY * 0.0175f;
         sample.gyroDps.z = gyroZ * 0.0175f;
 
-        // At the configured +/-4 g range, each accelerometer count represents
-        // 0.122 millig, or 0.000122 g.
         sample.accelG.x = accelX * 0.000122f;
         sample.accelG.y = accelY * 0.000122f;
         sample.accelG.z = accelZ * 0.000122f;
+
+        return true;
     }
 }
 
 bool Imu::begin() {
     pinMode(IMU_CS, OUTPUT);
-    digitalWrite(IMU_CS, HIGH); // Switch to I2C communication while idle.
+    digitalWrite(IMU_CS, HIGH); // Switch to I2C communication (disabled) while idle.
 
     imuSPI.begin(
         IMU_SCK,
@@ -132,33 +150,52 @@ bool Imu::begin() {
     writeRegister(REG_CTRL2_G, 0x64);  // Gyroscope: 416 Hz, ±500 degrees/second
 
     delay(20);
+
+    samplesSinceIdentityCheck = 0;
+    communicationHealthy = true;
+
     return true;
 }
 
-void Imu::calibrateGyro() {
+bool Imu::calibrateGyro() {
     gyroBias = {};
 
-    // Ignore the first readings after configuration so the sensor output can
-    // settle before it contributes to the bias estimate.
     ImuSample sample;
-    for (size_t i = 0; i < GYRO_CALIBRATION_SETTLING_SAMPLES; i++) {
-        readUncalibratedSample(sample);
+
+    for (
+        size_t i = 0;
+        i < GYRO_CALIBRATION_SETTLING_SAMPLES;
+        i++
+    ) {
+        if (!readUncalibratedSample(sample)) {
+        return false;
+        }
+
         delay(GYRO_SAMPLE_INTERVAL_MS);
     }
 
     Vector3 sum;
+
     for (size_t i = 0; i < GYRO_CALIBRATION_SAMPLES; i++) {
-        readUncalibratedSample(sample);
+        if (!readUncalibratedSample(sample)) {
+        return false;
+        }
+
         sum.x += sample.gyroDps.x;
         sum.y += sample.gyroDps.y;
         sum.z += sample.gyroDps.z;
+
         delay(GYRO_SAMPLE_INTERVAL_MS);
     }
 
-    const float sampleCount = static_cast<float>(GYRO_CALIBRATION_SAMPLES);
+    const float sampleCount =
+        static_cast<float>(GYRO_CALIBRATION_SAMPLES);
+
     gyroBias.x = sum.x / sampleCount;
     gyroBias.y = sum.y / sampleCount;
     gyroBias.z = sum.z / sampleCount;
+
+    return true;
 }
 
 Vector3 Imu::gyroBiasDps() {
@@ -169,9 +206,32 @@ uint8_t Imu::whoAmI() {
   return readRegister(REG_WHO_AM_I);
 }
 
-void Imu::readSample(ImuSample& sample) {
-  readUncalibratedSample(sample);
+bool Imu::readSample(ImuSample& sample) {
+  if (!readUncalibratedSample(sample)) {
+    return false;
+  }
+
+  samplesSinceIdentityCheck++;
+
+  if (
+      samplesSinceIdentityCheck
+      >= SPI_IDENTITY_CHECK_INTERVAL_SAMPLES
+  ) {
+    samplesSinceIdentityCheck = 0;
+
+    // Periodically verify that the device responding on SPI is still
+    // the expected ISM330DHCX, not merely returning plausible bytes.
+    communicationHealthy =
+        whoAmI() == EXPECTED_WHO_AM_I;
+  }
+
+  if (!communicationHealthy) {
+    return false;
+  }
+
   sample.gyroDps.x -= gyroBias.x;
   sample.gyroDps.y -= gyroBias.y;
   sample.gyroDps.z -= gyroBias.z;
+
+  return true;
 }
