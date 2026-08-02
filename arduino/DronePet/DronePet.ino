@@ -4,9 +4,12 @@
 #include "src/diagnostics/AxisTest.h"
 #include "src/flight/FlightLoop.h"
 #include "src/imu/Imu.h"
+#include "src/imu/ImuHealth.h"
 #include "src/imu/ImuStartup.h"
 #include "src/telemetry/Telemetry.h"
-#include "src/imu/ImuHealth.h"
+#include "src/tof/Tof.h"
+#include "src/tof/TofHealth.h"
+#include "src/tof/TofStartup.h"
 
 void setup() {
   Serial.begin(DronePetConfig::SERIAL_BAUD);
@@ -42,12 +45,25 @@ void setup() {
 
   if (DronePetConfig::RUN_AXIS_TEST) {
     AxisTest::start();
-  } else {
-    FlightLoop::begin();
+    return;
+  }
 
-    if constexpr (DronePetConfig::TELEMETRY_STARTUP) {
-      Telemetry::printFlightLoopStarted();
+  if (!TofStartup::initialize()) {
+    Telemetry::printTofInitializationFailed();
+
+    while (true) {
+      delay(1000);
     }
+  }
+
+  if constexpr (DronePetConfig::TELEMETRY_STARTUP) {
+    Telemetry::printTofInitialized();
+  }
+
+  FlightLoop::begin();
+
+  if constexpr (DronePetConfig::TELEMETRY_STARTUP) {
+    Telemetry::printFlightLoopStarted();
   }
 }
 
@@ -78,9 +94,21 @@ void loop() {
 
   const bool spiReadOk = Imu::readSample(sample);
 
-  const ImuHealthStatus health = ImuHealth::evaluate(spiReadOk, sample);
+  const ImuHealthStatus imuHealth =
+      ImuHealth::evaluate(spiReadOk, sample);
 
-  // TODO: Prevent arming or enter a safe state when health is not acceptable.
+  Tof::update();
+  const TofSample& tofSample = Tof::latestSample();
+  const TofHealthStatus tofHealth =
+      TofHealth::evaluate(
+          Tof::initialized(),
+          Tof::hasSample(),
+          Tof::communicationError(),
+          tofSample
+      );
+
+  // TODO: Prevent arming or enter a safe state when either
+  // imuHealth or tofHealth is not acceptable.
   // For now, record and report the condition through telemetry.
 
   // TODO: Pass sample and iteration.dtSeconds into the attitude
@@ -91,7 +119,9 @@ void loop() {
       Telemetry::printFlightSample(
           sample,
           iteration,
-          health
+          imuHealth,
+          tofSample,
+          tofHealth
       );
     }
   }

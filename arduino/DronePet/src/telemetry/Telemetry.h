@@ -1,24 +1,30 @@
 #pragma once
 
-#include "../flight/FlightLoop.h"
-#include "../imu/Imu.h"
-#include "../imu/ImuStartup.h"
-#include "../imu/ImuHealth.h"
+struct FlightLoopIteration;
+struct GyroCalibrationResult;
+struct ImuHealthStatus;
+struct ImuSample;
+struct TofHealthStatus;
+struct TofSample;
 
 namespace Telemetry {
-    void printImuInitializationFailed();
-    void printImuInitialized();
-    void printGyroCalibrationPrompt();
+  void printImuInitializationFailed();
+  void printImuInitialized();
+  void printTofInitializationFailed();
+  void printTofInitialized();
+  void printGyroCalibrationPrompt();
 
-    void printGyroCalibrationResult(
-        const GyroCalibrationResult& result
-    );
+  void printGyroCalibrationResult(
+      const GyroCalibrationResult& result
+  );
 
-    void printFlightLoopStarted();
+  void printFlightLoopStarted();
 
-    void printFlightSample(
-        const ImuSample& sample,
-        const FlightLoopIteration& iteration,
-        const ImuHealthStatus& health
-    );
+  void printFlightSample(
+      const ImuSample& imuSample,
+      const FlightLoopIteration& iteration,
+      const ImuHealthStatus& imuHealth,
+      const TofSample& tofSample,
+      const TofHealthStatus& tofHealth
+  );
 }

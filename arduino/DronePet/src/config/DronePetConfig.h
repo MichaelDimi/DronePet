@@ -11,8 +11,10 @@ namespace DronePetConfig {
   constexpr bool TELEMETRY_ENABLED = true;
 
   // Individual sections of the periodic telemetry line.
-  constexpr bool TELEMETRY_IMU_SAMPLE = true;
-  constexpr bool TELEMETRY_IMU_HEALTH = true;
+  constexpr bool TELEMETRY_IMU_SAMPLE = false;
+  constexpr bool TELEMETRY_IMU_HEALTH = false;
+  constexpr bool TELEMETRY_TOF_SAMPLE = true;
+  constexpr bool TELEMETRY_TOF_HEALTH = true;
   constexpr bool TELEMETRY_LOOP_TIMING = true;
 
   // Startup messages, including IMU initialization and gyro calibration.
