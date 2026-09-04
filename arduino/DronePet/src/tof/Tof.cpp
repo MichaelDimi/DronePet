@@ -9,14 +9,14 @@ namespace {
     VL53L1X sensor;
 
     // VL53L1X supports I2C fast mode at up to 400 kHz.
-    constexpr uint32_t I2C_CLOCK_HZ = 400'000;
+    constexpr uint32_t I2C_CLOCK_HZ = 100'000;
 
     // Used by library operations that are allowed to wait.
     constexpr uint16_t I2C_TIMEOUT_MS = 100;
 
     // Limit a failed I2C transaction so it cannot hold the
     // 5 ms flight loop for the ESP32 Wire default of 50 ms.
-    constexpr uint16_t I2C_TRANSACTION_TIMEOUT_MS = 2;
+    constexpr uint16_t I2C_TRANSACTION_TIMEOUT_MS = 20;
 
     // Long mode requires at least a 33 ms timing budget.
     // A 40 ms budget leaves enough margin for a 50 ms

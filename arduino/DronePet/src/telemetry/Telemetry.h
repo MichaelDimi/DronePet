@@ -6,6 +6,7 @@ struct ImuHealthStatus;
 struct ImuSample;
 struct TofHealthStatus;
 struct TofSample;
+struct AttitudeState;
 
 namespace Telemetry {
   void printImuInitializationFailed();
@@ -21,10 +22,11 @@ namespace Telemetry {
   void printFlightLoopStarted();
 
   void printFlightSample(
-      const ImuSample& imuSample,
-      const FlightLoopIteration& iteration,
-      const ImuHealthStatus& imuHealth,
-      const TofSample& tofSample,
-      const TofHealthStatus& tofHealth
-  );
+    const ImuSample& imuSample,
+    const FlightLoopIteration& iteration,
+    const ImuHealthStatus& imuHealth,
+    const TofSample& tofSample,
+    const TofHealthStatus& tofHealth,
+    const AttitudeState& attitude
+);
 }

@@ -4,6 +4,7 @@
 #include "TelemetrySections.h"
 #include "../config/DronePetConfig.h"
 #include "../flight/FlightLoop.h"
+#include "../control/AttitudeEstimator.h"
 
 namespace {
   void printSectionSeparator(bool wroteSection) {
@@ -52,9 +53,15 @@ void Telemetry::printFlightSample(
     const FlightLoopIteration& iteration,
     const ImuHealthStatus& imuHealth,
     const TofSample& tofSample,
-    const TofHealthStatus& tofHealth
+    const TofHealthStatus& tofHealth,
+    const AttitudeState& attitude
 ) {
   bool wroteSection = false;
+
+  if constexpr (DronePetConfig::TELEMETRY_ATTITUDE) {
+    TelemetrySections::printAttitude(attitude);
+    wroteSection = true;
+  }
 
   if constexpr (DronePetConfig::TELEMETRY_IMU_SAMPLE) {
     TelemetrySections::printImuSample(imuSample, iteration);
@@ -76,6 +83,12 @@ void Telemetry::printFlightSample(
   if constexpr (DronePetConfig::TELEMETRY_TOF_HEALTH) {
     printSectionSeparator(wroteSection);
     TelemetrySections::printTofHealth(tofHealth);
+    wroteSection = true;
+  }
+
+  if constexpr (DronePetConfig::TELEMETRY_MOTORS) {
+    printSectionSeparator(wroteSection);
+    TelemetrySections::printMotors();
     wroteSection = true;
   }
 

@@ -1,23 +1,39 @@
 #include <Arduino.h>
 
 #include "src/config/DronePetConfig.h"
-#include "src/diagnostics/AxisTest.h"
+
+#include "src/flight/FlightSupervisor.h"
+
+#include "src/control/AttitudeEstimator.h"
+
 #include "src/flight/FlightLoop.h"
+
+#include "src/motors/Motors.h"
+
 #include "src/imu/Imu.h"
 #include "src/imu/ImuHealth.h"
 #include "src/imu/ImuStartup.h"
+
 #include "src/telemetry/Telemetry.h"
+
 #include "src/tof/Tof.h"
 #include "src/tof/TofHealth.h"
 #include "src/tof/TofStartup.h"
 
+#include "src/board/BoardPins.h"
+
 void setup() {
+
+  rgbLedWrite(STATUS_LED, 0, 0, 0);
+
   Serial.begin(DronePetConfig::SERIAL_BAUD);
   delay(1000);
 
+  Motors::begin();
+
+  // IMU startup
   if (!ImuStartup::initialize()) {
     Telemetry::printImuInitializationFailed();
-
     while (true) {
       delay(1000);
     }
@@ -35,31 +51,26 @@ void setup() {
     Telemetry::printGyroCalibrationResult(calibration);
   }
 
-  // A failed stationary calibration must prevent the future flight
-  // controller from starting with an invalid gyro bias.
   if (!calibration.passed) {
     while (true) {
       delay(1000);
     }
   }
 
-  if (DronePetConfig::RUN_AXIS_TEST) {
-    AxisTest::start();
-    return;
-  }
+  // ToF startup
+  const bool tofInitialized = TofStartup::initialize();
+  if constexpr (DronePetConfig::TELEMETRY_STARTUP) {
 
-  if (!TofStartup::initialize()) {
-    Telemetry::printTofInitializationFailed();
-
-    while (true) {
-      delay(1000);
+    if (tofInitialized) {
+      Telemetry::printTofInitialized();
+    }
+    else {
+      Telemetry::printTofInitializationFailed();
     }
   }
 
-  if constexpr (DronePetConfig::TELEMETRY_STARTUP) {
-    Telemetry::printTofInitialized();
-  }
-
+  AttitudeEstimator::begin();
+  FlightSupervisor::begin();
   FlightLoop::begin();
 
   if constexpr (DronePetConfig::TELEMETRY_STARTUP) {
@@ -68,37 +79,27 @@ void setup() {
 }
 
 void loop() {
-  if (DronePetConfig::RUN_AXIS_TEST) {
-    ImuSample sample{};
 
-    if (!Imu::readSample(sample)) {
-      delay(20);
-      return;
-    }
-
-    AxisTest::update(sample.gyroDps);
-
-    delay(20);
-    return;
-  }
-
+  // 1. Wait for the next 200 Hz iteration.
   FlightLoopIteration iteration;
 
-  // Arduino repeatedly calls loop(), but flight work begins only when
-  // the next scheduled 5 ms period has arrived.
   if (!FlightLoop::beginIteration(iteration)) {
     return;
   }
 
-  ImuSample sample{};
 
-  const bool spiReadOk = Imu::readSample(sample);
-
-  const ImuHealthStatus imuHealth =
-      ImuHealth::evaluate(spiReadOk, sample);
+  // 2. Read sensors.
+  ImuSample imuSample{};
+  const bool imuReadOk = Imu::readSample(imuSample);
 
   Tof::update();
   const TofSample& tofSample = Tof::latestSample();
+
+
+  // 3. Check sensor health.
+  const ImuHealthStatus imuHealth =
+      ImuHealth::evaluate(imuReadOk, imuSample);
+
   const TofHealthStatus tofHealth =
       TofHealth::evaluate(
           Tof::initialized(),
@@ -107,26 +108,47 @@ void loop() {
           tofSample
       );
 
-  // TODO: Prevent arming or enter a safe state when either
-  // imuHealth or tofHealth is not acceptable.
-  // For now, record and report the condition through telemetry.
 
-  // TODO: Pass sample and iteration.dtSeconds into the attitude
-  // estimator and flight controllers.
+  // 4. Estimate attitude.
+  if (imuReadOk) {
+    AttitudeEstimator::update(
+        imuSample,
+        iteration.dtSeconds
+    );
+  }
 
+  const AttitudeState& attitude =
+      AttitudeEstimator::state();
+
+
+  // 5. Run flight supervision + control.
+
+  FlightSupervisor::update(
+      attitude,
+      imuHealth,
+      tofSample,
+      tofHealth,
+      iteration.dtSeconds
+  );
+
+
+  // 6. Telemetry.
   if constexpr (DronePetConfig::TELEMETRY_ENABLED) {
+
     if (FlightLoop::telemetryDue()) {
+
       Telemetry::printFlightSample(
-          sample,
+          imuSample,
           iteration,
           imuHealth,
           tofSample,
-          tofHealth
+          tofHealth,
+          attitude
       );
     }
   }
 
-  // This is deliberately called after telemetry so serial-output delays
-  // are included in the measured execution time and overrun detection.
+
+  // 7. Measure complete iteration time.
   FlightLoop::endIteration(iteration);
 }

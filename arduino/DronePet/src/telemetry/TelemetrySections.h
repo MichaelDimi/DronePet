@@ -16,4 +16,8 @@ namespace TelemetrySections {
   );
 
   void printTofHealth(const TofHealthStatus& health);
+
+  void printMotors();
+
+  void printAttitude(const AttitudeState& attitude);
 }

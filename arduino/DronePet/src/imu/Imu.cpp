@@ -7,7 +7,7 @@
 // TODO: Later update gyro bias only during confidently stationary periods.
 
 namespace {
-    SPIClass imuSPI(VSPI);
+    SPIClass imuSPI(FSPI);
 
     constexpr uint32_t SPI_CLOCK_HZ = 1'000'000;
     constexpr size_t SPI_IDENTITY_CHECK_INTERVAL_SAMPLES = 200;
