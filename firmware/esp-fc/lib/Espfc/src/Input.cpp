@@ -11,7 +11,7 @@ Input::Input(Model& model, TelemetryManager& telemetry): _model(model), _telemet
 
 int Input::begin()
 {
-  _device = getInputDevice();
+  _device = _externalDevice ? _externalDevice : getInputDevice();
   _model.state.input.channelCount = _device ? _device->getChannelCount() : INPUT_CHANNELS;
   _model.state.input.frameDelta = FRAME_TIME_DEFAULT_US;
   _model.state.input.frameRate = 1000000ul / _model.state.input.frameDelta;

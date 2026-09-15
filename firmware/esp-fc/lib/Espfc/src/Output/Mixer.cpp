@@ -101,6 +101,7 @@ int FAST_CODE_ATTR Mixer::update()
 
   readTelemetry();
   updateMixer(mixer, outputs);
+
   writeOutput(mixer, outputs);
 
   if (_model.config.debug.mode == DEBUG_PIDLOOP)
@@ -277,6 +278,23 @@ void FAST_CODE_ATTR Mixer::writeOutput(const MixerConfig& mixer, float* out)
       }
     }
   }
+
+  // TEMPORARY: single-motor diagnostic.
+  // ESP-FC output numbers:
+  // 0 = back right
+  // 1 = front right
+  // 2 = back left
+  // 3 = front left
+
+  // constexpr int TEST_MOTOR = 2;
+
+  // for (size_t i = 0; i < 4; ++i)
+  // {
+  //     if (i != TEST_MOTOR)
+  //     {
+  //         _model.state.output.us[i] = 1000;
+  //     }
+  // }
 
   for (size_t i = 0; i < OUTPUT_CHANNELS; i++)
   {

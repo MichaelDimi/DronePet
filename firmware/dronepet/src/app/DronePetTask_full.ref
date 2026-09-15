@@ -1,0 +1,325 @@
+#include <Arduino.h>
+
+#include "DronePetTask.h"
+
+#include "../behavior/Hover.h"
+#include "../behavior/Landing.h"
+#include "../behavior/SafeLanding.h"
+#include "../behavior/Takeoff.h"
+
+#include "../board/BoardPins.h"
+#include "../board/StatusLed.h"
+#include "../controller/AltitudeController.h"
+#include "../controller/XyVelocityController.h"
+#include "../flight/EspFcRuntime.h"
+#include "../flight/FlightCommandMailbox.h"
+#include "../sensors/Mtf01.h"
+
+
+namespace {
+
+constexpr uint32_t XY_ENABLE_HEIGHT_MM = 150;
+constexpr uint32_t XY_DISABLE_HEIGHT_MM = 120;
+
+constexpr uint32_t TEST_START_DELAY_MS = 2000;
+constexpr uint32_t HOVER_DURATION_MS = 2000;
+
+
+enum class FlightPhase {
+    Waiting,
+    Takeoff,
+    Hover,
+    Landing,
+    SafeLanding,
+    Done
+};
+
+
+void setLed(FlightPhase phase) {
+    switch (phase) {
+        case FlightPhase::Takeoff:
+            DronePet::StatusLed::green();
+            break;
+
+        case FlightPhase::Landing:
+            DronePet::StatusLed::blue();
+            break;
+
+        case FlightPhase::SafeLanding:
+            DronePet::StatusLed::red();
+            break;
+
+        default:
+            DronePet::StatusLed::off();
+            break;
+    }
+}
+
+
+void run(void* parameter) {
+    DronePet::StatusLed::begin();
+    DronePet::Mtf01::begin();
+
+    DronePet::AltitudeController altitudeController;
+    altitudeController.begin();
+
+    DronePet::XyVelocityController xyController;
+    xyController.begin();
+
+    DronePet::XyControlOutput xyOutput;
+
+    DronePet::Takeoff takeoff;
+    DronePet::Hover hover;
+    DronePet::Landing landing;
+    DronePet::SafeLanding safeLanding;
+
+    FlightPhase phase = FlightPhase::Waiting;
+    setLed(phase);
+
+    uint32_t readySinceMs = 0;
+    uint32_t hoverStartedMs = 0;
+
+    float lastThrottle = 0.0f;
+
+    bool xyHoldEnabled = false;
+    bool xyHoldEstablished = false;
+
+
+    while (true) {
+        const bool newMtfSample = DronePet::Mtf01::update();
+
+        const auto fcStatus = EspFcRuntime::status();
+        DronePet::PilotCommand command;
+
+
+        switch (phase) {
+
+            case FlightPhase::Waiting: {
+                command.armed = false;
+                command.angleMode = true;
+
+                if (!fcStatus.ready) {
+                    readySinceMs = 0;
+                    break;
+                }
+
+                if (readySinceMs == 0) {
+                    readySinceMs = millis();
+                    break;
+                }
+
+                if (millis() - readySinceMs >= TEST_START_DELAY_MS) {
+                    takeoff.begin(altitudeController);
+
+                    xyHoldEnabled = false;
+                    xyHoldEstablished = false;
+
+                    phase = FlightPhase::Takeoff;
+                    setLed(phase);
+                }
+
+                break;
+            }
+
+
+            case FlightPhase::Takeoff: {
+                const auto result = takeoff.update(fcStatus, altitudeController, command);
+
+                if (result == DronePet::BehaviorResult::Complete) {
+                    if (DronePet::Mtf01::fresh()) {
+                        const auto& sample = DronePet::Mtf01::latestSample();
+
+                        if (sample.distanceMm >= 10) {
+                            hover.begin(sample.distanceMm / 1000.0f, altitudeController);
+
+                            hoverStartedMs = millis();
+                            phase = FlightPhase::Hover;
+                            setLed(phase);
+                            break;
+                        }
+                    }
+
+                    safeLanding.begin(lastThrottle);
+                    phase = FlightPhase::SafeLanding;
+                    setLed(phase);
+                }
+
+                if (result == DronePet::BehaviorResult::SafeLanding) {
+                    safeLanding.begin(lastThrottle);
+
+                    phase = FlightPhase::SafeLanding;
+                    setLed(phase);
+                }
+
+                break;
+            }
+
+
+            case FlightPhase::Hover: {
+                const auto result = hover.update(fcStatus, altitudeController, command);
+
+                if (result == DronePet::BehaviorResult::SafeLanding) {
+                    safeLanding.begin(lastThrottle);
+
+                    phase = FlightPhase::SafeLanding;
+                    setLed(phase);
+                    break;
+                }
+
+                if (millis() - hoverStartedMs >= HOVER_DURATION_MS) {
+                    landing.begin(altitudeController);
+
+                    phase = FlightPhase::Landing;
+                    setLed(phase);
+                }
+
+                break;
+            }
+
+
+            case FlightPhase::Landing: {
+                const auto result = landing.update(fcStatus, altitudeController, command);
+
+                if (result == DronePet::BehaviorResult::Complete) {
+                    phase = FlightPhase::Done;
+                    setLed(phase);
+                }
+
+                if (result == DronePet::BehaviorResult::SafeLanding) {
+                    safeLanding.begin(lastThrottle);
+
+                    phase = FlightPhase::SafeLanding;
+                    setLed(phase);
+                }
+
+                break;
+            }
+
+
+            case FlightPhase::SafeLanding: {
+                const auto result = safeLanding.update(fcStatus, command);
+
+                if (result == DronePet::BehaviorResult::Complete) {
+                    phase = FlightPhase::Done;
+                    setLed(phase);
+                }
+
+                break;
+            }
+
+
+            case FlightPhase::Done:
+                command.armed = false;
+                command.angleMode = true;
+                command.throttle = 0.0f;
+                break;
+        }
+
+
+        // Horizontal velocity hold.
+        const bool xyHoldActive =
+            phase == FlightPhase::Takeoff ||
+            phase == FlightPhase::Hover ||
+            phase == FlightPhase::Landing;
+
+        bool xyFailure = false;
+
+
+        if (xyHoldActive && DronePet::Mtf01::fresh()) {
+            const auto& sample = DronePet::Mtf01::latestSample();
+
+            if (sample.distanceMm >= XY_ENABLE_HEIGHT_MM) {
+                xyHoldEnabled = true;
+                xyHoldEstablished = true;
+            } else if (sample.distanceMm < XY_DISABLE_HEIGHT_MM) {
+                xyHoldEnabled = false;
+
+                // Dropping below the usable XY region is only expected
+                // during landing. During hover, or after XY was already
+                // established during takeoff, something has gone wrong.
+                if (phase == FlightPhase::Hover ||
+                    (phase == FlightPhase::Takeoff && xyHoldEstablished)) {
+                    xyFailure = true;
+                }
+            }
+
+            const bool flowUsable = xyHoldEnabled && sample.flowQuality > 0;
+
+            if (flowUsable) {
+                if (newMtfSample) {
+                    xyOutput = xyController.update(
+                        0.0f,
+                        0.0f,
+                        sample.velocityXMps,
+                        sample.velocityYMps
+                    );
+                }
+
+                command.roll = xyOutput.roll;
+                command.pitch = xyOutput.pitch;
+            } else {
+                xyController.reset();
+                xyOutput = {};
+
+                // If XY should currently be active but flow is unusable,
+                // stop normal flight and land safely.
+                if (xyHoldEnabled) {
+                    xyFailure = true;
+                }
+
+                if (phase == FlightPhase::Hover) {
+                    xyFailure = true;
+                }
+            }
+
+        } else {
+            xyController.reset();
+            xyOutput = {};
+
+            // Stale MTF data is unsafe once XY stabilization is expected.
+            if (phase == FlightPhase::Hover ||
+                (phase == FlightPhase::Takeoff && xyHoldEstablished) ||
+                (phase == FlightPhase::Landing && xyHoldEnabled)) {
+                xyFailure = true;
+            }
+        }
+
+
+        if (xyFailure && phase != FlightPhase::SafeLanding) {
+            safeLanding.begin(lastThrottle);
+
+            phase = FlightPhase::SafeLanding;
+            setLed(phase);
+
+            // Replace the previous flight command immediately rather
+            // than waiting until the next task iteration.
+            safeLanding.update(fcStatus, command);
+
+            xyHoldEnabled = false;
+            xyHoldEstablished = false;
+
+            xyController.reset();
+            xyOutput = {};
+        }
+
+
+        DronePet::FlightCommandMailbox::publish(command);
+        lastThrottle = command.throttle;
+
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+}
+
+
+void DronePetTask::start() {
+    DronePet::PilotCommand command;
+
+    command.armed = false;
+    command.angleMode = true;
+
+    DronePet::FlightCommandMailbox::publish(command);
+
+    xTaskCreatePinnedToCore(run, "DronePet", 4096, nullptr, 1, nullptr, 1);
+}

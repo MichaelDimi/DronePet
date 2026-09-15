@@ -8,10 +8,9 @@ constexpr int IMU_MOSI = 9;
 constexpr int IMU_MISO = 8;
 constexpr int IMU_CS   = 7;
 
-// ToF — I2C
-constexpr int TOF_SDA   = 12;
-constexpr int TOF_SCL   = 11;
-constexpr int TOF_XSHUT = 13;
+// MTF01 — UART
+constexpr int MTF_RX = 12;  // connects to MTF Tx
+constexpr int MTF_TX = 11;  // connects to MTF Rx
 
 // ESC motor signals
 constexpr int ESC_1 = 5;

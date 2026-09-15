@@ -50,7 +50,14 @@ int GyroSensor::reload(ModelChangeEvent event)
   switch (event)
   {
     case MODEL_CHANGE_FILTER:
-      _model.state.gyro.scale = Utils::toRad(2000.f) / 32768.f;
+      if (_gyro->getType() == GYRO_ISM330DHCX)
+      {
+          _model.state.gyro.scale = Utils::toRad(0.070f);
+      }
+      else
+      {
+          _model.state.gyro.scale = Utils::toRad(2000.f) / 32768.f;
+      }
 
       _sma.begin(_model.config.loopSync);
       _dyn_notch_denom = std::max((uint32_t)1, _model.state.loopTimer.rate / 1000);
@@ -138,11 +145,18 @@ int FAST_CODE_ATTR GyroSensor::read()
 
   if (_model.config.gyro.filter3.freq)
   {
-    _model.state.gyro.sampled = Utils::applyFilter(_model.state.gyro.filter3, input);
+    _model.state.gyro.sampled.store(
+        Utils::applyFilter(
+            _model.state.gyro.filter3,
+            input
+        )
+    );
   }
   else
   {
-    _model.state.gyro.sampled = _sma.update(input);
+    _model.state.gyro.sampled.store(
+        _sma.update(input)
+    );
   }
 
   return 1;
@@ -154,7 +168,7 @@ int FAST_CODE_ATTR GyroSensor::filter()
 
   Utils::Stats::Measure measure(_model.state.stats, COUNTER_GYRO_FILTER);
 
-  _model.state.gyro.adc = _model.state.gyro.sampled;
+  _model.state.gyro.adc =_model.state.gyro.sampled.fetch();
 
   calibrate();
 

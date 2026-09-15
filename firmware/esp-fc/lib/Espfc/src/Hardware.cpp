@@ -10,6 +10,7 @@
 #include "Device/Gyro/GyroMPU6050.hpp"
 #include "Device/Gyro/GyroMPU6500.hpp"
 #include "Device/Gyro/GyroMPU9250.hpp"
+#include "Device/Gyro/GyroISM330DHCX.hpp"
 #include "Device/GyroDevice.hpp"
 #include "Device/Mag/MagAK8963.hpp"
 #include "Device/Mag/MagHMC5883L.hpp"
@@ -40,6 +41,7 @@ static Espfc::Device::Gyro::GyroMPU6050 mpu6050;
 static Espfc::Device::Gyro::GyroMPU6500 mpu6500;
 static Espfc::Device::Gyro::GyroMPU9250 mpu9250;
 static Espfc::Device::Gyro::GyroLSM6DSO lsm6dso;
+static Espfc::Device::Gyro::GyroISM330DHCX ism330dhcx;
 static Espfc::Device::Gyro::GyroICM20602 icm20602;
 static Espfc::Device::Gyro::GyroICM42688 icm42688;
 static Espfc::Device::Gyro::GyroBMI160 bmi160;
@@ -111,6 +113,7 @@ void Hardware::detectGyro()
     if (!detectedGyro && detectDevice(icm20602, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &icm20602;
     if (!detectedGyro && detectDevice(icm42688, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &icm42688;
     if (!detectedGyro && detectDevice(bmi160, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &bmi160;
+    if (!detectedGyro && detectDevice(ism330dhcx, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &ism330dhcx;
     if (!detectedGyro && detectDevice(lsm6dso, spiBus, _model.config.pin[PIN_SPI_CS0])) detectedGyro = &lsm6dso;
     if (detectedGyro) gyroSlaveBus.begin(&spiBus, detectedGyro->getAddress());
   }
@@ -123,6 +126,7 @@ void Hardware::detectGyro()
     if (!detectedGyro && detectDevice(icm20602, i2cBus)) detectedGyro = &icm20602;
     if (!detectedGyro && detectDevice(bmi160, i2cBus)) detectedGyro = &bmi160;
     if (!detectedGyro && detectDevice(mpu6050, i2cBus)) detectedGyro = &mpu6050;
+    if (!detectedGyro && detectDevice(ism330dhcx, i2cBus)) detectedGyro = &ism330dhcx;
     if (!detectedGyro && detectDevice(lsm6dso, i2cBus)) detectedGyro = &lsm6dso;
     if (detectedGyro) gyroSlaveBus.begin(&i2cBus, detectedGyro->getAddress());
   }

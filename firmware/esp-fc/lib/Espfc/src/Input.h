@@ -37,6 +37,10 @@ public:
   int reload(ModelChangeEvent event);
   int update();
 
+  void setExternalDevice(Device::InputDevice* device) {
+    _externalDevice = device;
+  }
+
   int16_t getFailsafeValue(uint8_t c);
   void setInput(Axis i, float v, bool newFrame, bool noFilter = false);
 
@@ -56,6 +60,7 @@ private:
   Model& _model;
   TelemetryManager& _telemetry;
   Device::InputDevice* _device;
+  Device::InputDevice* _externalDevice = nullptr;
   Utils::Filter _filter[INPUT_CHANNELS];
   Device::InputPPM _ppm;
   Device::InputIBUS _ibus;

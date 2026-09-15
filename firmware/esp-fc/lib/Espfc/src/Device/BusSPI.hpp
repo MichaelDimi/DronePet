@@ -16,7 +16,7 @@ public:
   static constexpr uint8_t SPI_WRITE = 0x7f;
 
   static constexpr uint32_t SPI_SPEED_NORMAL = 1000000;
-  static constexpr uint32_t SPI_SPEED_FAST = 16000000;
+  static constexpr uint32_t SPI_SPEED_FAST = 4000000;
 
   BusType getType() const override;
 

@@ -1,12 +1,77 @@
 #include "Espfc.h"
 #include "Debug_Espfc.h"
 
+#include <cmath>
+
 namespace Espfc {
 
 Espfc::Espfc()
     : _hardware{_model}, _controller{_model}, _telemetry{_model}, _input{_model, _telemetry}, _actuator{_model},
       _sensor{_model}, _mixer{_model}, _blackbox{_model}, _buzzer{_model}, _serial{_model, _telemetry}
 {
+}
+
+RuntimeStatus Espfc::getRuntimeStatus()
+{
+  portENTER_CRITICAL(&_statusMux);
+
+  RuntimeStatus status = _runtimeStatus;
+  const uint32_t nowUs = micros();
+
+  // All three parts must have reported.
+  status.fresh = _statusSeen == 0b111;
+
+  for (uint32_t updatedUs : _statusTimesUs)
+  {
+    status.fresh = status.fresh
+        && uint32_t(nowUs - updatedUs) <= 200'000u;
+  }
+
+  status.ready = status.fresh
+      && _statusSensorsReady
+      && _statusGyroCalibrated
+      && std::isfinite(status.rollDeg)
+      && std::isfinite(status.pitchDeg);
+
+  portEXIT_CRITICAL(&_statusMux);
+
+  return status;
+}
+
+void Espfc::updateRuntimeStatus(StatusPart part)
+{
+  portENTER_CRITICAL(&_statusMux);
+
+  switch (part)
+  {
+    case STATUS_MODES:
+      _runtimeStatus.armed = _model.isModeActive(MODE_ARMED);
+      _runtimeStatus.angleMode = _model.isModeActive(MODE_ANGLE);
+
+      _statusSensorsReady =
+          _model.gyroActive() && _model.accelActive()
+          && _model.state.accel.calibrationState == CALIBRATION_IDLE
+          && _model.state.mag.calibrationState == CALIBRATION_IDLE;
+      break;
+
+    case STATUS_CONTROL:
+      _statusGyroCalibrated =
+          _model.state.gyro.calibrationState == CALIBRATION_IDLE;
+      break;
+
+    case STATUS_ATTITUDE:
+      _runtimeStatus.rollDeg =
+          Utils::toDeg(_model.state.attitude.euler[AXIS_ROLL]);
+
+      _runtimeStatus.pitchDeg =
+          Utils::toDeg(_model.state.attitude.euler[AXIS_PITCH]);
+      break;
+  }
+
+  _statusTimesUs[part] = micros();
+  _statusSeen |= 1u << part;
+
+  portEXIT_CRITICAL(&_statusMux);
 }
 
 int Espfc::load()
@@ -66,6 +131,7 @@ int FAST_CODE_ATTR Espfc::update(bool externalTrigger)
   if (_model.state.actuatorTimer.check())
   {
     _actuator.update();
+    updateRuntimeStatus(STATUS_MODES);
   }
 
 #else
@@ -86,6 +152,7 @@ int FAST_CODE_ATTR Espfc::update(bool externalTrigger)
     if (_model.state.actuatorTimer.check())
     {
       _actuator.update();
+      updateRuntimeStatus(STATUS_MODES);
     }
   }
   _sensor.updateDelayed();
@@ -123,12 +190,14 @@ int FAST_CODE_ATTR Espfc::updateOther()
       {
         _loop_next = micros() + _model.state.loopTimer.interval / 2;
         _mixer.update();
+        updateRuntimeStatus(STATUS_CONTROL);
         _blackbox.update();
       }
       _sensor.postLoop();
       break;
     case EVENT_ACCEL_READ:
       _sensor.fusion();
+      updateRuntimeStatus(STATUS_ATTITUDE);
       break;
     default:
       break;

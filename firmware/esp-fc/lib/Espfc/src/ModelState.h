@@ -256,7 +256,7 @@ struct GyroState
 
   VectorInt16 raw;
   VectorFloat adc;
-  VectorFloat sampled;
+  Utils::SeqLockWrapper<VectorFloat> sampled{};
   VectorFloat scaled;
   VectorFloat dynNotch;
 
