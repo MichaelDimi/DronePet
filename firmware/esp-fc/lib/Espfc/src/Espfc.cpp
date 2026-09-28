@@ -28,10 +28,15 @@ RuntimeStatus Espfc::getRuntimeStatus()
   }
 
   status.ready = status.fresh
-      && _statusSensorsReady
-      && _statusGyroCalibrated
-      && std::isfinite(status.rollDeg)
-      && std::isfinite(status.pitchDeg);
+    && _statusSensorsReady
+    && _statusGyroCalibrated
+    && std::isfinite(status.rollDeg)
+    && std::isfinite(status.pitchDeg)
+    && std::isfinite(status.yawRad)
+    && std::isfinite(status.rollRateRadS)
+    && std::isfinite(status.pitchRateRadS)
+    && std::isfinite(status.accelWorldXMps2)
+    && std::isfinite(status.accelWorldYMps2);
 
   portEXIT_CRITICAL(&_statusMux);
 
@@ -54,17 +59,41 @@ void Espfc::updateRuntimeStatus(StatusPart part)
           && _model.state.mag.calibrationState == CALIBRATION_IDLE;
       break;
 
-    case STATUS_CONTROL:
-      _statusGyroCalibrated =
-          _model.state.gyro.calibrationState == CALIBRATION_IDLE;
-      break;
+    case STATUS_CONTROL: {
+        _statusGyroCalibrated =
+            _model.state.gyro.calibrationState == CALIBRATION_IDLE;
+
+        _runtimeStatus.rollRateSetpointRadS =
+            _model.state.setpoint.rate[AXIS_ROLL];
+
+        _runtimeStatus.pitchRateSetpointRadS =
+            _model.state.setpoint.rate[AXIS_PITCH];
+
+        break;
+    }
 
     case STATUS_ATTITUDE:
-      _runtimeStatus.rollDeg =
-          Utils::toDeg(_model.state.attitude.euler[AXIS_ROLL]);
+       _runtimeStatus.rollDeg =
+        Utils::toDeg(_model.state.attitude.euler[AXIS_ROLL]);
 
       _runtimeStatus.pitchDeg =
           Utils::toDeg(_model.state.attitude.euler[AXIS_PITCH]);
+
+      _runtimeStatus.yawRad =
+        _model.state.attitude.euler[AXIS_YAW];
+
+      _runtimeStatus.rollRateRadS =
+          _model.state.attitude.rate[AXIS_ROLL];
+
+      _runtimeStatus.pitchRateRadS =
+          _model.state.attitude.rate[AXIS_PITCH];
+
+      _runtimeStatus.accelWorldXMps2 =
+          _model.state.accel.world.x;
+
+      _runtimeStatus.accelWorldYMps2 =
+          _model.state.accel.world.y;
+
       break;
   }
 

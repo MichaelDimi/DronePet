@@ -22,15 +22,26 @@ constexpr uint8_t REG_CTRL3_C  = 0x12;
 constexpr uint8_t REG_CTRL4_C  = 0x13;
 constexpr uint8_t REG_CTRL6_C  = 0x15;
 constexpr uint8_t REG_CTRL7_G  = 0x16;
+constexpr uint8_t REG_CTRL8_XL = 0x17;
 constexpr uint8_t REG_CTRL9_XL = 0x18;
 
 constexpr uint8_t REG_OUTX_L_G  = 0x22;
 constexpr uint8_t REG_OUTX_L_XL = 0x28;
 
-
 // Exact ISM330DHCX ID.
 constexpr uint8_t WHO_AM_I_VALUE = 0x6B;
 
+// --------------------------------------------------
+// CTRL1_XL and CTRL8_XL
+// --------------------------------------------------
+
+constexpr uint8_t CTRL1_LPF2_XL_EN = 0x02;
+
+constexpr uint8_t CTRL8_HPCF_XL_MASK = 0xE0;
+constexpr uint8_t CTRL8_HPCF_XL_ODR_10 = 0x20;
+constexpr uint8_t CTRL8_HP_REF_MODE_XL = 0x10;
+constexpr uint8_t CTRL8_FASTSETTL_MODE_XL = 0x08;
+constexpr uint8_t CTRL8_HP_SLOPE_XL_EN = 0x04;
 
 // --------------------------------------------------
 // CTRL3_C
@@ -75,7 +86,6 @@ constexpr uint8_t CTRL7_G_HM_MODE  = 0x80;
 // --------------------------------------------------
 
 constexpr uint8_t CTRL9_DEVICE_CONF = 0x02;
-
 
 // --------------------------------------------------
 // Accelerometer
@@ -402,14 +412,34 @@ bool GyroISM330DHCX::configure()
     }
 
 
+    // Accelerometer LPF2:
+    // low-pass path, cutoff = ODR / 10.
+    // At 833 Hz this is approximately 83 Hz.
+    // Keep HP reference, fast-settle, and high-pass/slope modes disabled.
+    if (
+        !_bus->writeMask(
+            _addr,
+            REG_CTRL8_XL,
+            CTRL8_HPCF_XL_MASK |
+                CTRL8_HP_REF_MODE_XL |
+                CTRL8_FASTSETTL_MODE_XL |
+                CTRL8_HP_SLOPE_XL_EN,
+            CTRL8_HPCF_XL_ODR_10
+        )
+    ) {
+        return false;
+    }
+
+
     // Accelerometer:
     // 833 Hz
     // +/-16 g
-    // LPF2 disabled
+    // LPF2 enabled
     const uint8_t ctrl1 =
         static_cast<uint8_t>(
             (ACCEL_ODR_833HZ << 4) |
-            (ACCEL_FS_16G << 2)
+            (ACCEL_FS_16G << 2) |
+            CTRL1_LPF2_XL_EN
         );
 
     if (
@@ -446,7 +476,9 @@ bool GyroISM330DHCX::configure()
         return false;
     }
 
-    delay(10);
+    // LPF2 at ODR/10 has a 10-sample settling time.
+    // At 833 Hz that is about 12 ms, so allow 20 ms here.
+    delay(20);
 
     return true;
 }
@@ -459,12 +491,14 @@ bool GyroISM330DHCX::verifyConfiguration()
 
     // CTRL1_XL should be:
     //
-    // ODR = 833 Hz
-    // FS  = +/-16 g
+    // ODR  = 833 Hz
+    // FS   = +/-16 g
+    // LPF2 = enabled
     const uint8_t expectedCtrl1 =
         static_cast<uint8_t>(
             (ACCEL_ODR_833HZ << 4) |
-            (ACCEL_FS_16G << 2)
+            (ACCEL_FS_16G << 2) |
+            CTRL1_LPF2_XL_EN
         );
 
     if (
@@ -475,6 +509,39 @@ bool GyroISM330DHCX::verifyConfiguration()
         ) != 1 ||
         value != expectedCtrl1
     ) {
+        return false;
+    }
+
+
+    // CTRL8_XL should be:
+    //
+    // HPCF_XL = 001 -> LPF2 cutoff = ODR / 10 (~83 Hz)
+    // HP_REF_MODE_XL = 0
+    // FASTSETTL_MODE_XL = 0
+    // HP_SLOPE_XL_EN = 0 -> low-pass path
+    if (
+        _bus->readByte(
+            _addr,
+            REG_CTRL8_XL,
+            &value
+        ) != 1
+    ) {
+        return false;
+    }
+
+    if ((value & CTRL8_HPCF_XL_MASK) != CTRL8_HPCF_XL_ODR_10) {
+        return false;
+    }
+
+    if ((value & CTRL8_HP_REF_MODE_XL) != 0) {
+        return false;
+    }
+
+    if ((value & CTRL8_FASTSETTL_MODE_XL) != 0) {
+        return false;
+    }
+
+    if ((value & CTRL8_HP_SLOPE_XL_EN) != 0) {
         return false;
     }
 
