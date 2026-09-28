@@ -126,6 +126,9 @@ bool decodePacket() {
     sample.distanceMm =
         payload.distanceMm;
 
+    sample.strength = payload.strength;
+    sample.precision = payload.precision;
+
     sample.tofStatus =
         payload.tofStatus;
 

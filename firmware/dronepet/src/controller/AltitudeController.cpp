@@ -9,16 +9,17 @@ constexpr float CONTROL_RATE_HZ = 100.0f;
 
 
 // Approximate hover throttle from our recent tests.
-constexpr float HOVER_THROTTLE = 0.35f;
+constexpr float HOVER_THROTTLE = 0.32f;
 
 
-constexpr float ALTITUDE_KP = 0.20f;
-constexpr float ALTITUDE_KI = 0.0f;
-constexpr float ALTITUDE_KD = 0.0f;
+constexpr float ALTITUDE_KP = 0.40f;
+constexpr float ALTITUDE_KI = 0.10f;
+constexpr float ALTITUDE_KD = 0.08f;
 
 // Don't let altitude control make huge corrections
 // while we're tuning it.
 constexpr float MAX_CORRECTION = 0.08f;
+constexpr float MAX_I_CORRECTION = 0.04f;
 
 }
 
@@ -31,33 +32,25 @@ void DronePet::AltitudeController::begin() {
 
     _filterInitialized = false;
 
-    _pid.rate =
-        CONTROL_RATE_HZ;
+    _pid.rate = CONTROL_RATE_HZ;
 
-    _pid.Kp =
-        ALTITUDE_KP;
+    _pid.Kp = ALTITUDE_KP;
 
-    _pid.Ki =
-        ALTITUDE_KI;
+    _pid.Ki = ALTITUDE_KI;
 
-    _pid.Kd =
-        ALTITUDE_KD;
+    _pid.Kd = ALTITUDE_KD;
 
     _pid.Kf = 0.0f;
 
 
-    _pid.oLimitLow =
-        -MAX_CORRECTION;
+    _pid.oLimitLow = -MAX_CORRECTION;
 
-    _pid.oLimitHigh =
-        MAX_CORRECTION;
+    _pid.oLimitHigh = MAX_CORRECTION;
 
 
-    _pid.iLimitLow =
-        -MAX_CORRECTION;
+    _pid.iLimitLow = -MAX_I_CORRECTION;
 
-    _pid.iLimitHigh =
-        MAX_CORRECTION;
+    _pid.iLimitHigh = MAX_I_CORRECTION;
 
 
     _pid.begin();
@@ -67,6 +60,7 @@ void DronePet::AltitudeController::begin() {
 void DronePet::AltitudeController::reset() {
     _pid.resetIterm();
     _filterInitialized = false;
+    _debug = {};
 }
 
 
@@ -92,9 +86,23 @@ float DronePet::AltitudeController::update(
             filteredAltitudeM
         );
 
+    _debug.filteredAltitudeM = filteredAltitudeM;
+    _debug.errorM = _pid.error;
+
+    _debug.pTerm = _pid.pTerm;
+    _debug.iTerm = _pid.iTerm;
+    _debug.dTerm = _pid.dTerm;
+
+    _debug.correction = correction;
+
     return std::clamp(
         HOVER_THROTTLE + correction,
         0.0f,
         1.0f
     );
+}
+
+const DronePet::AltitudeControllerDebug&
+DronePet::AltitudeController::debug() const {
+    return _debug;
 }

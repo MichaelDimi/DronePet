@@ -1,13 +1,17 @@
 #pragma once
 
 #include <Control/Pid.h>
-#include <Utils/Filter.h>
 
 namespace DronePet {
 
 struct XyControlOutput {
     float roll = 0.0f;
     float pitch = 0.0f;
+
+    float unclampedRollCommand = 0.0f;
+    float unclampedPitchCommand = 0.0f;
+    float rollITerm = 0.0f;
+    float pitchITerm = 0.0f;
 };
 
 class XyVelocityController {
@@ -25,11 +29,6 @@ public:
 private:
     Espfc::Control::Pid _xPid;
     Espfc::Control::Pid _yPid;
-
-    Espfc::Utils::FilterStatePt1 _xFilter;
-    Espfc::Utils::FilterStatePt1 _yFilter;
-
-    bool _filterInitialized = false;
 };
 
 }

@@ -13,7 +13,10 @@ struct MtfSample {
     float velocityXMps = 0.0f;
     float velocityYMps = 0.0f;
 
+    uint8_t strength = 0;
+    uint8_t precision = 0;
     uint8_t tofStatus = 0;
+
     uint8_t flowQuality = 0;
     uint8_t flowStatus = 0;
 

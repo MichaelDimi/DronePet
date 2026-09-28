@@ -17,7 +17,6 @@ constexpr float MAX_TILT_DEG = 25.0f;
 
 }
 
-
 void DronePet::Landing::begin(AltitudeController& altitudeController) {
     altitudeController.reset();
 
@@ -30,7 +29,6 @@ void DronePet::Landing::begin(AltitudeController& altitudeController) {
     _lastUpdateMs = millis();
 }
 
-
 DronePet::BehaviorResult DronePet::Landing::update(
     const Espfc::RuntimeStatus& fcStatus,
     AltitudeController& altitudeController,
@@ -40,12 +38,8 @@ DronePet::BehaviorResult DronePet::Landing::update(
     command.armed = true;
     command.angleMode = true;
 
-    if (!fcStatus.ready ||
-        !fcStatus.armed ||
-        std::fabs(fcStatus.rollDeg) > MAX_TILT_DEG ||
-        std::fabs(fcStatus.pitchDeg) > MAX_TILT_DEG) {
-        return BehaviorResult::SafeLanding;
-    }
+    if (!fcStatus.ready || !fcStatus.armed) return BehaviorResult::SafeLanding;
+    if (std::fabs(fcStatus.rollDeg) > MAX_TILT_DEG || std::fabs(fcStatus.pitchDeg) > MAX_TILT_DEG) return BehaviorResult::SafeLanding;
 
     const uint32_t nowMs = millis();
 
@@ -56,9 +50,7 @@ DronePet::BehaviorResult DronePet::Landing::update(
             if (sample.distanceMm >= 10) {
                 const float altitudeM = sample.distanceMm / 1000.0f;
 
-                if (altitudeM <= LOW_REGION_M) {
-                    _reachedLowRegion = true;
-                }
+                if (altitudeM <= LOW_REGION_M) _reachedLowRegion = true;
 
                 _lastThrottle = altitudeController.update(LANDING_TARGET_M, altitudeM);
                 command.throttle = _lastThrottle;
@@ -73,29 +65,20 @@ DronePet::BehaviorResult DronePet::Landing::update(
             }
         }
 
-        // Near the floor, losing ToF is expected.
-        if (_reachedLowRegion) {
-            _stage = Stage::FinalSettle;
-            _finalThrottle = _lastThrottle;
-            _lastUpdateMs = nowMs;
+        if (!_reachedLowRegion) return BehaviorResult::SafeLanding;
 
-            command.throttle = _finalThrottle;
-            return BehaviorResult::Running;
-        }
+        _stage = Stage::FinalSettle;
+        _finalThrottle = _lastThrottle;
+        _lastUpdateMs = nowMs;
+        command.throttle = _finalThrottle;
 
-        // Losing altitude information while still higher is unexpected.
-        return BehaviorResult::SafeLanding;
+        return BehaviorResult::Running;
     }
 
-    // Final powered settle.
     const float dt = (nowMs - _lastUpdateMs) / 1000.0f;
     _lastUpdateMs = nowMs;
 
-    _finalThrottle = std::max(
-        0.0f,
-        _finalThrottle - FINAL_THROTTLE_RAMP_PER_SEC * dt
-    );
-
+    _finalThrottle = std::max(0.0f, _finalThrottle - FINAL_THROTTLE_RAMP_PER_SEC * dt);
     command.throttle = _finalThrottle;
 
     if (_finalThrottle <= 0.0f) {

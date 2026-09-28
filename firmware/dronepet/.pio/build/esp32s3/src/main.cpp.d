@@ -179,5 +179,7 @@
  /Users/michaeldimitrov/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc/esp32/spiram.h \
  /Users/michaeldimitrov/.platformio/packages/framework-arduinoespressif32/cores/esp32/io_pin_remap.h \
  /Users/michaeldimitrov/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
+ /Users/michaeldimitrov/.platformio/packages/framework-arduinoespressif32/libraries/SPIFFS/src/SPIFFS.h \
+ /Users/michaeldimitrov/.platformio/packages/framework-arduinoespressif32/libraries/FS/src/FS.h \
  src/app/DronePetTask.h src/flight/EspFcRuntime.h \
  /Users/michaeldimitrov/DronePetProject/firmware/esp-fc/lib/Espfc/src/RuntimeStatus.h
