@@ -123,9 +123,6 @@ bool decodePacket() {
     sample.sensorTimeMs =
         payload.timeMs;
 
-    sample.distanceMm =
-        payload.distanceMm;
-
     sample.strength = payload.strength;
     sample.precision = payload.precision;
 
@@ -139,36 +136,17 @@ bool decodePacket() {
         payload.flowStatus;
 
 
-    if (payload.distanceMm >= 10) {
+    sample.rangeM = payload.distanceMm / 1000.0f;
 
-        const float altitudeM =
-            payload.distanceMm
-            / 1000.0f;
+    // MTF +X = right -> DronePet -X
+    // MTF +Y = back  -> DronePet +Y
+    sample.flowVelocityXAt1mMps =
+        -payload.flowVelX / 100.0f;
 
+    sample.flowVelocityYAt1mMps =
+        payload.flowVelY / 100.0f;
 
-        // Convert MTF optical flow into DronePet body axes.
-        //
-        // MTF +X = right   -> DronePet -X
-        // MTF +Y = back    -> DronePet +Y
-        sample.velocityXMps =
-            -payload.flowVelX
-            * altitudeM
-            / 100.0f;
-
-        sample.velocityYMps =
-            payload.flowVelY
-            * altitudeM
-            / 100.0f;
-
-    } else {
-
-        sample.velocityXMps = 0.0f;
-        sample.velocityYMps = 0.0f;
-    }
-
-
-    sample.receivedAtUs =
-        micros();
+    sample.receivedAtUs = micros();
 
     sampleReceived = true;
 

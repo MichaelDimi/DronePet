@@ -8,10 +8,12 @@ namespace DronePet {
 struct MtfSample {
     uint32_t sensorTimeMs = 0;
 
-    uint32_t distanceMm = 0;
+    float rangeM = 0.0f;
 
-    float velocityXMps = 0.0f;
-    float velocityYMps = 0.0f;
+    // MTF optical-flow velocity normalized to a 1 m measurement distance,
+    // converted to DronePet body axes.
+    float flowVelocityXAt1mMps = 0.0f;
+    float flowVelocityYAt1mMps = 0.0f;
 
     uint8_t strength = 0;
     uint8_t precision = 0;

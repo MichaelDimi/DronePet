@@ -6,7 +6,7 @@
 namespace {
 
 constexpr uint32_t LOG_PERIOD_MS = 50; // 20 Hz
-constexpr size_t MAX_SAMPLES = 320;
+constexpr size_t MAX_SAMPLES = 600;
 constexpr uint8_t LOG_VERSION = 4;
 
 constexpr const char* LOG_PATH = "/altlog.bin";

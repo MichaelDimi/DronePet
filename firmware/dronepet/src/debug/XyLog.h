@@ -10,9 +10,6 @@ void add(
     uint32_t elapsedMs,
     uint32_t sensorTimeMs,
 
-    float positionXM,
-    float positionYM,
-
     float rawVelocityXMps,
     float rawVelocityYMps,
 

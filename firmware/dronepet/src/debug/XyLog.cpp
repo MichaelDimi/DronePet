@@ -7,8 +7,8 @@ namespace {
 
 // The DronePet task/controller runs at 100 Hz. We log each new MTF sample
 // rather than downsampling to the old 20 Hz diagnostic rate.
-constexpr size_t MAX_SAMPLES = 1024;
-constexpr uint8_t LOG_VERSION = 10;
+constexpr size_t MAX_SAMPLES = 2970;
+constexpr uint8_t LOG_VERSION = 11;
 
 constexpr const char* LOG_PATH = "/xylog.bin";
 constexpr const char* TEMP_PATH = "/xylog.tmp";
@@ -17,9 +17,6 @@ constexpr const char* TEMP_PATH = "/xylog.tmp";
 struct Sample {
     uint16_t timeMs;
     uint32_t sensorTimeMs;
-
-    int16_t positionXmm;
-    int16_t positionYmm;
 
     int16_t rawVelocityXmmps;
     int16_t rawVelocityYmmps;
@@ -65,7 +62,7 @@ struct Sample {
 };
 #pragma pack(pop)
 
-static_assert(sizeof(Sample) == 62);
+static_assert(sizeof(Sample) == 58);
 
 #pragma pack(push, 1)
 struct LogHeader {
@@ -106,9 +103,6 @@ void DronePet::XyLog::beginRun() {
 void DronePet::XyLog::add(
     uint32_t elapsedMs,
     uint32_t sensorTimeMs,
-
-    float positionXM,
-    float positionYM,
 
     float rawVelocityXMps,
     float rawVelocityYMps,
@@ -164,9 +158,6 @@ void DronePet::XyLog::add(
 
     sample.timeMs = toU16(elapsedMs, 1.0f);
     sample.sensorTimeMs = sensorTimeMs;
-
-    sample.positionXmm = toI16(positionXM, 1000.0f);
-    sample.positionYmm = toI16(positionYM, 1000.0f);
 
     sample.rawVelocityXmmps = toI16(rawVelocityXMps, 1000.0f);
     sample.rawVelocityYmmps = toI16(rawVelocityYMps, 1000.0f);
@@ -310,7 +301,6 @@ void DronePet::XyLog::printSaved(Stream& out) {
     out.println("# XY_LOG_BEGIN");
     out.println(
         "time_ms,sensor_time_ms,"
-        "position_x_m,position_y_m,"
         "raw_velocity_x_mps,raw_velocity_y_mps,"
         "flow_velocity_x_mps,flow_velocity_y_mps,"
         "estimated_velocity_x_mps,estimated_velocity_y_mps,"
@@ -331,7 +321,6 @@ void DronePet::XyLog::printSaved(Stream& out) {
 
         out.printf(
             "%u,%lu,"
-            "%.3f,%.3f,"  // position
             "%.3f,%.3f,"  // raw velocity
             "%.3f,%.3f,"  // flow velocity
             "%.3f,%.3f,"  // estimated velocity
@@ -347,9 +336,6 @@ void DronePet::XyLog::printSaved(Stream& out) {
             "%u,%u,%u,%u\n",
             sample.timeMs,
             static_cast<unsigned long>(sample.sensorTimeMs),
-
-            sample.positionXmm / 1000.0f,
-            sample.positionYmm / 1000.0f,
 
             sample.rawVelocityXmmps / 1000.0f,
             sample.rawVelocityYmmps / 1000.0f,

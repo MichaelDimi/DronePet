@@ -17,16 +17,11 @@ struct AltitudeControllerDebug {
 };
 
 class AltitudeController {
-
 public:
     void begin();
     void reset();
 
-    float update(
-        float targetAltitudeM,
-        float altitudeM
-    );
-
+    float update(float targetAltitudeM, float altitudeM);
     const AltitudeControllerDebug& debug() const;
 
 private:
@@ -34,7 +29,6 @@ private:
     Espfc::Utils::FilterStatePt1 _altitudeFilter;
 
     AltitudeControllerDebug _debug;
-
     bool _filterInitialized = false;
 };
 

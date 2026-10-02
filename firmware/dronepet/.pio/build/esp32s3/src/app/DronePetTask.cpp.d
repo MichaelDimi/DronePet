@@ -179,16 +179,15 @@
  /Users/michaeldimitrov/.platformio/packages/framework-arduinoespressif32/tools/sdk/esp32s3/include/esp_hw_support/include/soc/esp32/spiram.h \
  /Users/michaeldimitrov/.platformio/packages/framework-arduinoespressif32/cores/esp32/io_pin_remap.h \
  /Users/michaeldimitrov/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
- src/app/DronePetTask.h src/app/../board/StatusLed.h \
- src/app/../estimation/XyStateEstimator.h \
- src/app/../estimation/VelocityEstimator.h \
- src/app/../controller/AltitudeController.h \
+ src/app/DronePetTask.h src/app/../sensors/Mtf01.h \
+ src/app/../board/StatusLed.h src/app/../controller/AltitudeController.h \
  /Users/michaeldimitrov/DronePetProject/firmware/esp-fc/lib/Espfc/src/Control/Pid.h \
  /Users/michaeldimitrov/DronePetProject/firmware/esp-fc/lib/Espfc/src/Utils/Filter.h \
  /Users/michaeldimitrov/DronePetProject/firmware/esp-fc/lib/Espfc/src/Utils/Math.hpp \
+ src/app/../estimation/AltitudeEstimator.h \
  src/app/../controller/XyVelocityController.h \
- src/app/../debug/AltitudeLog.h src/app/../debug/XyLog.h \
- src/app/../flight/EspFcRuntime.h \
+ src/app/../estimation/VelocityEstimator.h src/app/../debug/AltitudeLog.h \
+ src/app/../debug/XyLog.h src/app/../flight/EspFcRuntime.h \
  /Users/michaeldimitrov/DronePetProject/firmware/esp-fc/lib/Espfc/src/RuntimeStatus.h \
  src/app/../flight/FlightCommandMailbox.h \
- src/app/../flight/PilotCommand.h src/app/../sensors/Mtf01.h
+ src/app/../flight/PilotCommand.h
